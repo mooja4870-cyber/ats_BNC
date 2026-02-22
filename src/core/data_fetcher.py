@@ -26,7 +26,8 @@ class DataFetcher:
         if exchange is not None:
             self.exchange = exchange
         else:
-            self.exchange = ccxt.binance({"enableRateLimit": True, "timeout": 15000})
+            self.exchange = ccxt.binanceusdm({"enableRateLimit": True, "timeout": 15000})
+        self.market_type = "swap" if "usdm" in self.exchange.id.lower() or "future" in self.exchange.id.lower() else "spot"
         self._cache: dict[str, pd.DataFrame] = {}
         self._price_cache: dict[str, float] = {}
         self._last_request_time: float = 0
@@ -86,7 +87,7 @@ class DataFetcher:
         Returns:
             OHLCV DataFrame 또는 None
         """
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         tf = self._resolve_timeframe(interval)
         cache_key = f"{pair}_{tf}"
 
@@ -164,7 +165,7 @@ class DataFetcher:
 
     def get_current_price(self, pair: str) -> float | None:
         """현재가 조회"""
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         try:
             self._rate_limit()
             ticker = self.exchange.fetch_ticker(symbol)
@@ -188,7 +189,7 @@ class DataFetcher:
             return {}
 
         result: dict[str, float] = {}
-        symbols = [normalize_symbol(p) for p in pairs]
+        symbols = [normalize_symbol(p, self.market_type) for p in pairs]
 
         # ccxt fetch_tickers 사용 (배치 조회)
         try:
@@ -220,7 +221,7 @@ class DataFetcher:
 
     def get_orderbook(self, pair: str, limit: int = 5) -> dict | None:
         """호가창 조회"""
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         try:
             self._rate_limit()
             orderbook = self.exchange.fetch_order_book(symbol, limit)
@@ -284,7 +285,7 @@ class DataFetcher:
 
     def get_ticker(self, pair: str) -> dict | None:
         """24h 티커 정보 조회"""
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         try:
             self._rate_limit()
             ticker = self.exchange.fetch_ticker(symbol)

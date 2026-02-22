@@ -97,14 +97,20 @@ def get_env(key: str, default=None):
     return value
 
 
-def normalize_symbol(pair: str) -> str:
-    """OKX 스타일 심볼을 Binance 호환 형식으로 변환
+def normalize_symbol(pair: str, market_type: str = "swap") -> str:
+    """Binance 호환 심볼로 변환
 
-    'BTC/USDT:USDT' -> 'BTC/USDT'
-    'ETH/USDT'      -> 'ETH/USDT' (변경 없음)
+    spot: 'BTC/USDT:USDT' -> 'BTC/USDT'
+    swap: 'BTC/USDT' -> 'BTC/USDT:USDT' (선물은 ccxt.binanceusdm에서 :USDT를 요구함)
     """
-    if ":" in pair:
-        return pair.split(":")[0]
+    base = pair.split(":")[0]
+    if market_type == "spot":
+        return base
+    
+    # swap/future
+    if base.endswith("/USDT") and not pair.endswith(":USDT"):
+        return f"{base}:USDT"
+        
     return pair
 
 

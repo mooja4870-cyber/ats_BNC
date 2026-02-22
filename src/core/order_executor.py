@@ -62,7 +62,7 @@ class OrderExecutor:
         """선물 모드 시 전체 페어 레버리지 설정 (Binance)"""
         pairs = config.get("trading", {}).get("pairs", [])
         for pair in pairs:
-            symbol = normalize_symbol(pair)
+            symbol = normalize_symbol(pair, self.market_type)
             try:
                 # Binance에서는 마진 모드 먼저 설정, 그 후 레버리지
                 try:
@@ -110,7 +110,7 @@ class OrderExecutor:
             )
             return None
 
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         trade_id = generate_trade_id(pair)
 
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
@@ -137,7 +137,7 @@ class OrderExecutor:
             )
             return None
 
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         trade_id = generate_trade_id(pair)
 
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
@@ -156,7 +156,7 @@ class OrderExecutor:
             quantity: 청산 수량
             position_side: 'long' 또는 'short'
         """
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         trade_id = generate_trade_id(pair)
 
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
@@ -211,7 +211,7 @@ class OrderExecutor:
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
             try:
                 if pair:
-                    symbol = normalize_symbol(pair)
+                    symbol = normalize_symbol(pair, self.market_type)
                     self.exchange.cancel_all_orders(symbol)
                 else:
                     pass
@@ -229,7 +229,7 @@ class OrderExecutor:
 
     def _safe_get_current_price(self, pair: str, retries: int = 2) -> float | None:
         """현재가 조회 (재시도 포함)"""
-        symbol = normalize_symbol(pair)
+        symbol = normalize_symbol(pair, self.market_type)
         for attempt in range(retries + 1):
             try:
                 ticker = self.exchange.fetch_ticker(symbol)

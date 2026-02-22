@@ -67,7 +67,7 @@ async def system_reset():
         try:
             pairs = config["trading"].get("pairs", [])
             for pair in pairs:
-                symbol = normalize_symbol(pair)
+                symbol = normalize_symbol(pair, market_type)
                 order_executor.cancel_all_orders(symbol)
                 cancelled_orders_count += 1
         except Exception as e:

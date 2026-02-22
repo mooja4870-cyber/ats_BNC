@@ -63,7 +63,7 @@ async def reset_system():
         # 3 단계: 미체결 주문 취소
         pairs = config.get("trading", {}).get("pairs", [])
         for pair in pairs:
-            symbol = normalize_symbol(pair)
+            symbol = normalize_symbol(pair, market_type)
             try:
                 open_orders = exchange.fetch_open_orders(symbol)
                 if open_orders:
