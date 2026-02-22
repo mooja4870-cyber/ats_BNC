@@ -1,6 +1,6 @@
 # scripts/paper_trade.py
 """
-종이거래 모드 실행 스크립트 (OKX)
+종이거래 모드 실행 스크립트 (Binance)
 
 실제 자금 없이 가상 매매를 시뮬레이션합니다.
 최소 2주~1개월 테스트 후 실전 전환을 권장합니다.
@@ -55,7 +55,7 @@ def check_config():
     leverage = config["trading"].get("leverage", 1)
 
     logger.info(f"📊 거래 페어: {', '.join(pairs)}")
-    logger.info(f"🏦 거래소: OKX ({market_type})")
+    logger.info(f"🏦 거래소: Binance ({market_type})")
     logger.info(f"⚡ 레버리지: {leverage}x")
     logger.info(f"⏱️  매매 간격: {config['trading']['loop_interval_seconds']}초")
     logger.info(f"💰 초기 가상 잔고: 10,000 USDT")
@@ -69,7 +69,7 @@ def print_banner():
     banner = """
     ╔═══════════════════════════════════════════════════════════╗
     ║                                                           ║
-    ║        📝 OKX 선물+현물 자동매매 - 종이거래 모드          ║
+    ║       📝 Binance 선물+현물 자동매매 - 종이거래 모드        ║
     ║                                                           ║
     ║   ⚠️  주의: 이 모드는 실제 거래를 하지 않습니다          ║
     ║   💡 최소 2주 이상 테스트 후 실전 모드로 전환하세요      ║

@@ -1,4 +1,4 @@
-"""디스코드 Webhook 알림 모듈 (OKX)"""
+"""디스코드 Webhook 알림 모듈 (Binance)"""
 
 from __future__ import annotations
 
@@ -155,24 +155,25 @@ class DiscordNotifier:
         await self._send_webhook(self.webhook_error, embed)
 
     async def notify_position_report_1m(self, stats: dict):
-        """1분 주기 잔고 스냅샷 리포트 — 사용자 상세 요청 스타일"""
+        """1분 주기 잔고 스냅샷 리포트 — 사용자 상세 요청 스타일 (초기화 직후 스냅샷 양식 포함)"""
+        
+        eval_str = f"{stats['eval_total_usdt']:,.2f} USDT"
+        if stats['unrealized_pnl_usdt'] != 0 or stats['total_assets'] != 10000.0:
+            # 평가총액 세부 사항은 보유 내역이 있을 때만 표시
+            if stats['eval_total_usdt'] > 0:
+                eval_str += f" ({stats['unrealized_pnl_usdt']:+,.2f} USDT, {format_pct(stats['unrealized_pnl_pct'])})"
+
         lines = [
             "💼 **잔고 스냅샷**",
-            "**💰 총자산**",
-            f"{stats['total_assets']:,.2f} USDT ({format_pct(stats['total_pnl_pct'] * 100)})",
-            "",
-            "**💵 현금**",
-            f"{stats['cash_usdt']:,.2f} USDT",
-            "",
-            "**📦 평가총액**",
-            f"{stats['eval_total_usdt']:,.2f} USDT ({stats['unrealized_pnl_usdt']:+,.2f} USDT, {format_pct(stats['unrealized_pnl_pct'])})",
-            "",
-            "**🧾 종목별 현황**"
+            f"💰 총자산: {stats['total_assets']:,.2f} USDT ({format_pct(stats['total_pnl_pct'] * 100)})",
+            f"💵 현금: {stats['cash_usdt']:,.2f} USDT",
+            f"📦 평가총액: {eval_str}",
+            "🧾 **종목별 현황:**"
         ]
         
         holdings = stats.get("holdings", [])
         if not holdings:
-            lines.append("• 없음")
+            lines[-1] = "🧾 **종목별 현황:** 없음"
         else:
             for h in holdings:
                 lines.append(f"• {h['symbol']}: 평가 {h['eval_usdt']:,.2f} USDT | 손익 {format_pct(h['pnl_pct'])}")

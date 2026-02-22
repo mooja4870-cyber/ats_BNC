@@ -1,4 +1,4 @@
-"""SQLite 데이터베이스 스키마 및 기본 CRUD (OKX)"""
+"""SQLite 데이터베이스 스키마 및 기본 CRUD (Binance)"""
 
 import sqlite3
 from loguru import logger

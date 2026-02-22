@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from loguru import logger
-from src.utils.helpers import load_config, create_okx_exchange
+from src.utils.helpers import load_config, create_exchange, normalize_symbol
 from src.core.order_executor import OrderExecutor
 from src.notifications.discord_notifier import DiscordNotifier
 from src.database.models import init_database
@@ -24,9 +24,10 @@ async def system_reset():
     mode_str = config["trading"]["mode"]
     mode = TradeMode(mode_str)
     initial_capital = config["risk"].get("initial_capital", 10000.0)
+    market_type = config["trading"].get("market_type", "swap")
     
     # 2. 거래소 연결
-    exchange = create_okx_exchange(mode_str)
+    exchange = create_exchange("binance", mode_str, market_type=market_type)
     order_executor = OrderExecutor(config, exchange)
     
     closed_pos_count = 0
@@ -54,7 +55,7 @@ async def system_reset():
         holdings = state.get("holdings", {})
         for symbol_base, qty in list(holdings.items()):
             if qty > 0:
-                pair = f"{symbol_base}/USDT:USDT" if "SHORT_" not in symbol_base else f"{symbol_base.replace('SHORT_', '')}/USDT:USDT"
+                pair = f"{symbol_base}/USDT" if "SHORT_" not in symbol_base else f"{symbol_base.replace('SHORT_', '')}/USDT"
                 p_side = "short" if "SHORT_" in symbol_base else "long"
                 logger.info(f"⚠️ Paper 미청산 포지션 발견: {symbol_base} {qty}개")
                 order_executor.close_position(pair, qty, p_side)
@@ -64,15 +65,14 @@ async def system_reset():
     logger.info("Step 3: 미체결 주문 취소 중...")
     if mode in (TradeMode.LIVE, TradeMode.DEMO):
         try:
-            # 전체 취소 (OKX는 페어별 취소가 일반적이므로 Pairs 순회)
             pairs = config["trading"].get("pairs", [])
             for pair in pairs:
-                order_executor.cancel_all_orders(pair)
-                cancelled_orders_count += 1 # 대략적으로 카운트
+                symbol = normalize_symbol(pair)
+                order_executor.cancel_all_orders(symbol)
+                cancelled_orders_count += 1
         except Exception as e:
             logger.error(f"미체결 주문 취소 중 오류: {e}")
     else:
-        # Paper 모드는 미체결 주문 없음
         cancelled_orders_count = 0
 
     # Step 4: 내부 데이터 초기화
@@ -91,8 +91,6 @@ async def system_reset():
     if db_path.exists():
         os.remove(db_path)
     init_database()
-    
-    # daily_summary 관련 등 기타 리셋이 필요하면 여기서 수행 (현재는 trades.db 삭제로 충분)
 
     # Step 5: 디스코드 알림
     logger.info("Step 5: 초기화 완료 알림 전송 중...")

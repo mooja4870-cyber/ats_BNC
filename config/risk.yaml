@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════
-#  리스크 관리 전용 설정 (OKX)
+#  리스크 관리 전용 설정 (Binance)
 # ═══════════════════════════════════════════
 
 risk_management:
@@ -13,7 +13,7 @@ risk_management:
   # 연속 손실 관리
   max_consecutive_losses: 2       # 2연패 시 당일 종료
 
-  # 수수료 (OKX 기준)
+  # 수수료 (Binance 기준)
   fee_rate: 0.0005                # 편도 taker 0.05%
   fee_rate_maker: 0.0002          # maker 0.02%
   fee_rate_taker: 0.0005          # taker 0.05%

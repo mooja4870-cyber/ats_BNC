@@ -1,9 +1,9 @@
-"""리스크 관리 모듈 (OKX)"""
+"""리스크 관리 모듈 (Binance)"""
 from __future__ import annotations
 
 from loguru import logger
 from src.utils.helpers import now_kst
-from src.utils.constants import OKX_MIN_ORDER_USDT
+from src.utils.constants import MIN_ORDER_USDT
 
 
 class RiskManager:
@@ -94,7 +94,7 @@ class RiskManager:
           - 숏 포지션 동일 적용
         """
         # 0. 안전장치 체크
-        max_margin_pct = self.cfg.get("max_total_margin_pct", 0.20)
+        max_margin_pct = self.cfg.get("max_total_margin_pct", 0.45)
         min_avail_pct = self.cfg.get("min_available_balance_pct", 0.50)
 
         if total_used_margin > total_equity * max_margin_pct:
@@ -112,9 +112,9 @@ class RiskManager:
             return None
 
         # 1. 마진 비율 결정
-        base_pct = self.cfg.get("margin_per_ticker_pct", 0.03)
-        target_atr = self.cfg.get("target_atr_pct", 0.003)
-        max_per_ticker_pct = self.cfg.get("max_per_ticker_pct", 0.04)
+        base_pct = self.cfg.get("margin_per_ticker_pct", 0.09)
+        target_atr = self.cfg.get("target_atr_pct", 0.009)
+        max_per_ticker_pct = self.cfg.get("max_per_ticker_pct", 0.15)
 
         margin_pct = base_pct
         if current_atr_pct and current_atr_pct > 0:
@@ -128,9 +128,9 @@ class RiskManager:
         notional_usdt = margin_usdt * self.leverage
         
         # 최소 주문금액 체크
-        if notional_usdt < OKX_MIN_ORDER_USDT:
+        if notional_usdt < MIN_ORDER_USDT:
             logger.warning(
-                f"[RiskMgr] {pair} 주문금액 {notional_usdt:.2f} < 최소 {OKX_MIN_ORDER_USDT}"
+                f"[RiskMgr] {pair} 주문금액 {notional_usdt:.2f} < 최소 {MIN_ORDER_USDT}"
             )
             return None
 

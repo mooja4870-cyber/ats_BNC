@@ -1,4 +1,4 @@
-"""주문 실행 모듈 (OKX 현물+선물)"""
+"""주문 실행 모듈 (Binance 현물+선물)"""
 
 from __future__ import annotations
 
@@ -11,16 +11,21 @@ from src.utils.constants import (
     TradeMode,
     PositionSide,
     MarketType,
-    OKX_MIN_ORDER_USDT,
-    OKX_API_DELAY,
+    MIN_ORDER_USDT,
+    API_DELAY,
 )
-from src.utils.helpers import create_okx_exchange, now_kst, generate_trade_id
+from src.utils.helpers import (
+    create_exchange,
+    normalize_symbol,
+    now_kst,
+    generate_trade_id,
+)
 
 
 class OrderExecutor:
-    """OKX 현물+선물 주문 실행기 (ccxt)"""
+    """Binance 현물+선물 주문 실행기 (ccxt)"""
 
-    def __init__(self, config: dict, exchange: ccxt.okx | None = None):
+    def __init__(self, config: dict, exchange: ccxt.Exchange | None = None):
         self.mode = TradeMode(config["trading"]["mode"])
         self.fee_rate = config["risk"]["fee_rate"]
         self.market_type = config["trading"].get("market_type", "swap")  # spot / swap
@@ -31,15 +36,19 @@ class OrderExecutor:
             if exchange is not None:
                 self.exchange = exchange
             else:
-                self.exchange = create_okx_exchange(self.mode.value)
+                self.exchange = create_exchange(
+                    "binance", self.mode.value, market_type=self.market_type
+                )
             # 선물 레버리지 설정
             if self.market_type in ("swap", "both"):
                 self._set_leverage_for_pairs(config)
-            logger.info(f"🔴 [OrderExecutor] {self.mode.value.upper()} 모드 초기화 (OKX)")
+            logger.info(f"🔴 [OrderExecutor] {self.mode.value.upper()} 모드 초기화 (Binance)")
         else:
-            self.exchange = create_okx_exchange("paper")  # public API only
+            self.exchange = create_exchange(
+                "binance", "paper", market_type=self.market_type
+            )
             self.exchange.timeout = 15000
-            logger.info("🟡 [OrderExecutor] PAPER 모드 초기화 (OKX)")
+            logger.info("🟡 [OrderExecutor] PAPER 모드 초기화 (Binance)")
 
         # 종이거래 가상 잔고
         self._paper_state_path = Path("data/paper_state.json")
@@ -50,20 +59,38 @@ class OrderExecutor:
             self._load_paper_state()
 
     def _set_leverage_for_pairs(self, config: dict):
-        """선물 모드 시 전체 페어 레버리지 설정"""
+        """선물 모드 시 전체 페어 레버리지 설정 (Binance)"""
         pairs = config.get("trading", {}).get("pairs", [])
         for pair in pairs:
-            if ":USDT" in pair:  # 선물 페어만
+            symbol = normalize_symbol(pair)
+            try:
+                # Binance에서는 마진 모드 먼저 설정, 그 후 레버리지
                 try:
-                    self.exchange.set_leverage(self.leverage, pair, params={
-                        "mgnMode": self.margin_mode,
-                    })
-                    logger.info(
-                        f"[OrderExecutor] 레버리지 설정: {pair} = {self.leverage}x "
-                        f"({self.margin_mode})"
+                    self.exchange.set_margin_mode(
+                        self.margin_mode, symbol
                     )
-                except Exception as e:
-                    logger.warning(f"[OrderExecutor] 레버리지 설정 실패 {pair}: {e}")
+                    logger.info(
+                        f"[OrderExecutor] 마진 모드 설정: {symbol} = {self.margin_mode}"
+                    )
+                except Exception as margin_err:
+                    # 이미 동일한 마진 모드면 에러 발생 가능 — 무시
+                    err_msg = str(margin_err).lower()
+                    if "no need to change" in err_msg or "already" in err_msg:
+                        logger.debug(
+                            f"[OrderExecutor] 마진 모드 이미 설정됨: {symbol} = {self.margin_mode}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[OrderExecutor] 마진 모드 설정 실패 {symbol}: {margin_err}"
+                        )
+
+                self.exchange.set_leverage(self.leverage, symbol)
+                logger.info(
+                    f"[OrderExecutor] 레버리지 설정: {symbol} = {self.leverage}x "
+                    f"({self.margin_mode})"
+                )
+            except Exception as e:
+                logger.warning(f"[OrderExecutor] 레버리지 설정 실패 {symbol}: {e}")
 
     # ═══════════════════════════════════════════
     #  공통 주문 인터페이스
@@ -74,19 +101,20 @@ class OrderExecutor:
         롱 포지션 진입 (현물 매수 또는 선물 롱)
 
         Args:
-            pair: 'BTC/USDT:USDT' (선물) 또는 'BTC/USDT' (현물)
+            pair: 'BTC/USDT' (현물/선물 공통)
             amount_usdt: 주문 금액 (USDT)
         """
-        if amount_usdt < OKX_MIN_ORDER_USDT:
+        if amount_usdt < MIN_ORDER_USDT:
             logger.warning(
                 f"[OrderExecutor] 최소 주문금액 미달: {amount_usdt:.2f} USDT"
             )
             return None
 
+        symbol = normalize_symbol(pair)
         trade_id = generate_trade_id(pair)
 
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
-            return self._live_open_long(pair, amount_usdt, trade_id)
+            return self._live_open_long(symbol, amount_usdt, trade_id, pair)
         else:
             return self._paper_open_long(pair, amount_usdt, trade_id)
 
@@ -95,23 +123,25 @@ class OrderExecutor:
         숏 포지션 진입 (선물 전용)
 
         Args:
-            pair: 'BTC/USDT:USDT' (선물)
+            pair: 'BTC/USDT' 또는 'BTC/USDT:USDT' (선물)
             amount_usdt: 주문 금액 (USDT)
         """
-        if ":USDT" not in pair:
-            logger.warning(f"[OrderExecutor] 숏은 선물 페어만 가능: {pair}")
+        # Binance 선물에서는 :USDT 접미 없이도 숏 가능 (market_type으로 판별)
+        if self.market_type not in ("swap", "both", "future", "futures"):
+            logger.warning(f"[OrderExecutor] 숏은 선물 모드에서만 가능 (현재: {self.market_type})")
             return None
 
-        if amount_usdt < OKX_MIN_ORDER_USDT:
+        if amount_usdt < MIN_ORDER_USDT:
             logger.warning(
                 f"[OrderExecutor] 최소 주문금액 미달: {amount_usdt:.2f} USDT"
             )
             return None
 
+        symbol = normalize_symbol(pair)
         trade_id = generate_trade_id(pair)
 
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
-            return self._live_open_short(pair, amount_usdt, trade_id)
+            return self._live_open_short(symbol, amount_usdt, trade_id, pair)
         else:
             return self._paper_open_short(pair, amount_usdt, trade_id)
 
@@ -126,10 +156,11 @@ class OrderExecutor:
             quantity: 청산 수량
             position_side: 'long' 또는 'short'
         """
+        symbol = normalize_symbol(pair)
         trade_id = generate_trade_id(pair)
 
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
-            return self._live_close(pair, quantity, position_side, trade_id)
+            return self._live_close(symbol, quantity, position_side, trade_id, pair)
         else:
             return self._paper_close(pair, quantity, position_side, trade_id)
 
@@ -144,7 +175,7 @@ class OrderExecutor:
         """
         거래소(또는 Paper)의 모든 포지션을 표준 형식으로 변환하여 반환
         Returns:
-            [{'pair': 'BTC/USDT:USDT', 'side': 'long', 'qty': 0.1}, ...]
+            [{'pair': 'BTC/USDT', 'side': 'long', 'qty': 0.1}, ...]
         """
         results = []
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
@@ -166,7 +197,7 @@ class OrderExecutor:
             holdings = state.get("holdings", {})
             for symbol_base, qty in holdings.items():
                 if qty > 0:
-                    pair = f"{symbol_base}/USDT:USDT" if "SHORT_" not in symbol_base else f"{symbol_base.replace('SHORT_', '')}/USDT:USDT"
+                    pair = f"{symbol_base}/USDT" if "SHORT_" not in symbol_base else f"{symbol_base.replace('SHORT_', '')}/USDT"
                     side = "short" if "SHORT_" in symbol_base else "long"
                     results.append({
                         "pair": pair,
@@ -179,12 +210,10 @@ class OrderExecutor:
         """모든 미체결 주문 취소"""
         if self.mode in (TradeMode.LIVE, TradeMode.DEMO):
             try:
-                # pair가 지정되면 해당 페어만, 아니면 전체 (OKX는 보통 페어별 취소 권장)
                 if pair:
-                    self.exchange.cancel_all_orders(pair)
+                    symbol = normalize_symbol(pair)
+                    self.exchange.cancel_all_orders(symbol)
                 else:
-                    # 전체 페어에 대해 순회하며 취소 (config 기반)
-                    # 여기서는 간단히 True 반환 (실제 필요시 구현)
                     pass
                 return True
             except Exception as e:
@@ -200,9 +229,10 @@ class OrderExecutor:
 
     def _safe_get_current_price(self, pair: str, retries: int = 2) -> float | None:
         """현재가 조회 (재시도 포함)"""
+        symbol = normalize_symbol(pair)
         for attempt in range(retries + 1):
             try:
-                ticker = self.exchange.fetch_ticker(pair)
+                ticker = self.exchange.fetch_ticker(symbol)
                 price = float(ticker.get("last", 0))
                 if price > 0:
                     self._price_cache[pair] = price
@@ -210,7 +240,7 @@ class OrderExecutor:
             except Exception as e:
                 if attempt == retries:
                     logger.warning(f"[OrderExecutor] 현재가 조회 실패: {pair} / {e}")
-            time.sleep(OKX_API_DELAY * (attempt + 1))
+            time.sleep(API_DELAY * (attempt + 1))
 
         return self._price_cache.get(pair)
 
@@ -224,29 +254,30 @@ class OrderExecutor:
         return f"{price:.6f}"
 
     # ═══════════════════════════════════════════
-    #  LIVE 주문 (OKX)
+    #  LIVE 주문 (Binance)
     # ═══════════════════════════════════════════
 
     def _live_open_long(
-        self, pair: str, amount_usdt: float, trade_id: str
+        self, symbol: str, amount_usdt: float, trade_id: str, original_pair: str = ""
     ) -> dict | None:
         """LIVE 롱 진입"""
         try:
-            price = self._safe_get_current_price(pair)
+            price = self._safe_get_current_price(symbol)
             if price is None or price <= 0:
-                logger.error(f"[OrderExecutor] 가격 조회 실패: {pair}")
+                logger.error(f"[OrderExecutor] 가격 조회 실패: {symbol}")
                 return None
 
             quantity = amount_usdt / price
 
-            is_swap = ":USDT" in pair
+            is_futures = self.market_type in ("swap", "future", "futures", "both")
             params = {}
-            if is_swap:
-                params["tdMode"] = self.margin_mode
-                params["posSide"] = "long"
+            if is_futures:
+                # Binance 선물 — 기본 양방향(Hedge Mode) 또는 One-way 모드에 따라 다름
+                # 안전하게 positionSide 설정을 시도
+                params["positionSide"] = "LONG"
 
-            order = self.exchange.create_market_buy_order(pair, quantity, params=params)
-            time.sleep(OKX_API_DELAY)
+            order = self.exchange.create_market_buy_order(symbol, quantity, params=params)
+            time.sleep(API_DELAY)
 
             filled_price = float(order.get("average", price))
             filled_qty = float(order.get("filled", quantity))
@@ -254,13 +285,14 @@ class OrderExecutor:
             fee_info = order.get("fee", {})
             fee = abs(float(fee_info.get("cost", 0))) if fee_info else cost * self.fee_rate
 
+            pair_out = original_pair or symbol
             logger.info(
-                f"[OrderExecutor] ✅ LIVE 롱 진입 | {pair} | "
+                f"[OrderExecutor] ✅ LIVE 롱 진입 | {pair_out} | "
                 f"Price: {self._format_price(filled_price)} | Qty: {filled_qty:.6f}"
             )
             return {
                 "trade_id": trade_id,
-                "pair": pair,
+                "pair": pair_out,
                 "side": "buy",
                 "position_side": "long",
                 "price": filled_price,
@@ -277,22 +309,21 @@ class OrderExecutor:
             return None
 
     def _live_open_short(
-        self, pair: str, amount_usdt: float, trade_id: str
+        self, symbol: str, amount_usdt: float, trade_id: str, original_pair: str = ""
     ) -> dict | None:
         """LIVE 숏 진입"""
         try:
-            price = self._safe_get_current_price(pair)
+            price = self._safe_get_current_price(symbol)
             if price is None or price <= 0:
                 return None
 
             quantity = amount_usdt / price
             params = {
-                "tdMode": self.margin_mode,
-                "posSide": "short",
+                "positionSide": "SHORT",
             }
 
-            order = self.exchange.create_market_sell_order(pair, quantity, params=params)
-            time.sleep(OKX_API_DELAY)
+            order = self.exchange.create_market_sell_order(symbol, quantity, params=params)
+            time.sleep(API_DELAY)
 
             filled_price = float(order.get("average", price))
             filled_qty = float(order.get("filled", quantity))
@@ -300,13 +331,14 @@ class OrderExecutor:
             fee_info = order.get("fee", {})
             fee = abs(float(fee_info.get("cost", 0))) if fee_info else cost * self.fee_rate
 
+            pair_out = original_pair or symbol
             logger.info(
-                f"[OrderExecutor] ✅ LIVE 숏 진입 | {pair} | "
+                f"[OrderExecutor] ✅ LIVE 숏 진입 | {pair_out} | "
                 f"Price: {self._format_price(filled_price)} | Qty: {filled_qty:.6f}"
             )
             return {
                 "trade_id": trade_id,
-                "pair": pair,
+                "pair": pair_out,
                 "side": "sell",
                 "position_side": "short",
                 "price": filled_price,
@@ -323,22 +355,22 @@ class OrderExecutor:
             return None
 
     def _live_close(
-        self, pair: str, quantity: float, position_side: str, trade_id: str
+        self, symbol: str, quantity: float, position_side: str, trade_id: str,
+        original_pair: str = ""
     ) -> dict | None:
         """LIVE 포지션 청산"""
         try:
-            is_swap = ":USDT" in pair
+            is_futures = self.market_type in ("swap", "future", "futures", "both")
             params = {}
-            if is_swap:
-                params["tdMode"] = self.margin_mode
-                params["posSide"] = position_side
+            if is_futures:
+                params["positionSide"] = position_side.upper()
 
             if position_side == "long":
-                order = self.exchange.create_market_sell_order(pair, quantity, params=params)
+                order = self.exchange.create_market_sell_order(symbol, quantity, params=params)
             else:  # short
-                order = self.exchange.create_market_buy_order(pair, quantity, params=params)
+                order = self.exchange.create_market_buy_order(symbol, quantity, params=params)
 
-            time.sleep(OKX_API_DELAY)
+            time.sleep(API_DELAY)
 
             filled_price = float(order.get("average", 0))
             filled_qty = float(order.get("filled", quantity))
@@ -346,14 +378,15 @@ class OrderExecutor:
             fee_info = order.get("fee", {})
             fee = abs(float(fee_info.get("cost", 0))) if fee_info else cost * self.fee_rate
 
+            pair_out = original_pair or symbol
             side_label = "롱 청산" if position_side == "long" else "숏 청산"
             logger.info(
-                f"[OrderExecutor] ✅ LIVE {side_label} | {pair} | "
+                f"[OrderExecutor] ✅ LIVE {side_label} | {pair_out} | "
                 f"Price: {self._format_price(filled_price)} | Qty: {filled_qty:.6f}"
             )
             return {
                 "trade_id": trade_id,
-                "pair": pair,
+                "pair": pair_out,
                 "side": "sell" if position_side == "long" else "buy",
                 "position_side": position_side,
                 "price": filled_price,

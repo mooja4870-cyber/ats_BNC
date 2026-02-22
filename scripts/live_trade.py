@@ -1,6 +1,6 @@
 # scripts/live_trade.py
 """
-실전 거래 실행 스크립트 (OKX)
+실전 거래 실행 스크립트 (Binance)
 
 ⚠️ 주의: 실제 자금이 투입됩니다!
 반드시 종이거래로 충분히 테스트한 후 소액으로 시작하세요.
@@ -49,21 +49,20 @@ def check_live_config():
         logger.error("❌ config/settings.yaml에서 trading.mode를 'live'로 설정해주세요!")
         sys.exit(1)
 
-    # OKX API 키 확인
+    # Binance API 키 확인
     try:
-        api_key = get_env("OKX_API_KEY")
-        secret_key = get_env("OKX_SECRET_KEY")
-        passphrase = get_env("OKX_PASSPHRASE")
+        api_key = get_env("BINANCE_API_KEY")
+        secret_key = get_env("BINANCE_SECRET_KEY")
 
-        if not api_key or not secret_key or not passphrase:
+        if not api_key or not secret_key:
             raise ValueError("API 키가 비어있습니다")
 
         if len(api_key) < 10 or len(secret_key) < 10:
             raise ValueError("API 키 형식이 올바르지 않습니다")
 
     except Exception as e:
-        logger.error(f"❌ OKX API 키 확인 실패: {e}")
-        logger.error("   .env 파일에 OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE를 설정해주세요.")
+        logger.error(f"❌ Binance API 키 확인 실패: {e}")
+        logger.error("   .env 파일에 BINANCE_API_KEY, BINANCE_SECRET_KEY를 설정해주세요.")
         sys.exit(1)
 
     # Discord Webhook 확인
@@ -84,14 +83,14 @@ def print_warning_banner():
     banner = """
     ╔═══════════════════════════════════════════════════════════╗
     ║                                                           ║
-    ║        🔴 OKX 선물+현물 자동매매 - 실전 모드 🔴          ║
+    ║     🔴 Binance 선물+현물 자동매매 - 실전 모드 🔴         ║
     ║                                                           ║
     ║   ⚠️⚠️⚠️  경고: 실제 자금이 투입됩니다!  ⚠️⚠️⚠️         ║
     ║                                                           ║
     ║   📌 시작 전 체크리스트:                                 ║
     ║      ✅ 종이거래 2주 이상 테스트 완료                    ║
     ║      ✅ 백테스트 승률 55% 이상 확인                      ║
-    ║      ✅ OKX API 키 권한 확인 (출금 권한 OFF)             ║
+    ║      ✅ Binance API 키 권한 확인 (출금 권한 OFF)         ║
     ║      ✅ 소액(50~100 USDT)으로 시작                       ║
     ║      ✅ 디스코드 알림 정상 작동 확인                     ║
     ║                                                           ║
@@ -132,7 +131,7 @@ async def run_live_trade():
     config = check_live_config()
 
     logger.info(f"📊 거래 페어: {', '.join(config['trading']['pairs'])}")
-    logger.info(f"🏦 거래소: OKX ({config['trading'].get('market_type', 'swap')})")
+    logger.info(f"🏦 거래소: Binance ({config['trading'].get('market_type', 'swap')})")
     logger.info(f"⚡ 레버리지: {config['trading'].get('leverage', 1)}x")
     logger.info(f"💰 1회 리스크: {config['risk']['risk_per_trade_pct'] * 100:.2f}%")
     logger.info(f"🛑 하루 최대 손실: {config['risk']['max_daily_loss_pct'] * 100:.1f}%")

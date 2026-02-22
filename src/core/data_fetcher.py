@@ -1,4 +1,4 @@
-"""OKX 데이터 수집 모듈 (ccxt 기반)"""
+"""Binance 데이터 수집 모듈 (ccxt 기반)"""
 
 from __future__ import annotations
 
@@ -7,25 +7,26 @@ import ccxt
 import pandas as pd
 from loguru import logger
 from src.utils.constants import (
-    OKX_API_DELAY,
+    API_DELAY,
     MAX_CANDLES_CACHE,
     MIN_CANDLES_FOR_INDICATORS,
     TIMEFRAME_MAP,
 )
+from src.utils.helpers import normalize_symbol
 
 
 class DataFetcher:
-    """OKX 캔들/시세 데이터 수집기 (ccxt)"""
+    """Binance 캔들/시세 데이터 수집기 (ccxt)"""
 
-    def __init__(self, exchange: ccxt.okx | None = None):
+    def __init__(self, exchange: ccxt.Exchange | None = None):
         """
         Args:
-            exchange: ccxt.okx 인스턴스 (None이면 public API 전용 인스턴스 생성)
+            exchange: ccxt.Exchange 인스턴스 (None이면 public API 전용 인스턴스 생성)
         """
         if exchange is not None:
             self.exchange = exchange
         else:
-            self.exchange = ccxt.okx({"enableRateLimit": True, "timeout": 15000})
+            self.exchange = ccxt.binance({"enableRateLimit": True, "timeout": 15000})
         self._cache: dict[str, pd.DataFrame] = {}
         self._price_cache: dict[str, float] = {}
         self._last_request_time: float = 0
@@ -57,8 +58,8 @@ class DataFetcher:
     def _rate_limit(self):
         """API Rate Limit 준수"""
         elapsed = time.time() - self._last_request_time
-        if elapsed < OKX_API_DELAY:
-            time.sleep(OKX_API_DELAY - elapsed)
+        if elapsed < API_DELAY:
+            time.sleep(API_DELAY - elapsed)
         self._last_request_time = time.time()
 
     @staticmethod
@@ -78,13 +79,14 @@ class DataFetcher:
         캔들 데이터 조회
 
         Args:
-            pair: 'BTC/USDT:USDT' (선물) 또는 'BTC/USDT' (현물)
+            pair: 'BTC/USDT' (현물/선물 공통)
             interval: '1m', '5m', '15m', '1h', '1d' (ccxt 표준)
             count: 캔들 개수
 
         Returns:
             OHLCV DataFrame 또는 None
         """
+        symbol = normalize_symbol(pair)
         tf = self._resolve_timeframe(interval)
         cache_key = f"{pair}_{tf}"
 
@@ -94,7 +96,7 @@ class DataFetcher:
             for attempt in range(max_retries + 1):
                 try:
                     self._rate_limit()
-                    ohlcv = self.exchange.fetch_ohlcv(pair, tf, limit=count)
+                    ohlcv = self.exchange.fetch_ohlcv(symbol, tf, limit=count)
                     if ohlcv and len(ohlcv) > 0:
                         break
                 except ccxt.NetworkError as e:
@@ -162,9 +164,10 @@ class DataFetcher:
 
     def get_current_price(self, pair: str) -> float | None:
         """현재가 조회"""
+        symbol = normalize_symbol(pair)
         try:
             self._rate_limit()
-            ticker = self.exchange.fetch_ticker(pair)
+            ticker = self.exchange.fetch_ticker(symbol)
             price = float(ticker.get("last", 0))
             if price > 0:
                 self._price_cache[pair] = price
@@ -185,13 +188,14 @@ class DataFetcher:
             return {}
 
         result: dict[str, float] = {}
+        symbols = [normalize_symbol(p) for p in pairs]
 
         # ccxt fetch_tickers 사용 (배치 조회)
         try:
             self._rate_limit()
-            tickers = self.exchange.fetch_tickers(pairs)
-            for pair in pairs:
-                ticker = tickers.get(pair, {})
+            tickers = self.exchange.fetch_tickers(symbols)
+            for pair, symbol in zip(pairs, symbols):
+                ticker = tickers.get(symbol, {})
                 price = ticker.get("last")
                 if price is not None and float(price) > 0:
                     result[pair] = float(price)
@@ -216,9 +220,10 @@ class DataFetcher:
 
     def get_orderbook(self, pair: str, limit: int = 5) -> dict | None:
         """호가창 조회"""
+        symbol = normalize_symbol(pair)
         try:
             self._rate_limit()
-            orderbook = self.exchange.fetch_order_book(pair, limit)
+            orderbook = self.exchange.fetch_order_book(symbol, limit)
             return orderbook
         except Exception as e:
             logger.error(f"[DataFetcher] {pair} 호가창 조회 실패: {e}")
@@ -243,21 +248,21 @@ class DataFetcher:
         try:
             self._rate_limit()
             params = {}
-            if market_type == "swap":
-                params["type"] = "swap"
-            elif market_type == "spot":
-                params["type"] = "spot"
+            # Binance에서는 exchange 인스턴스 자체가 선물/현물 구분
+            # 추가 params 없이도 정상 동작
 
             raw_balance = self.exchange.fetch_balance(params)
             result = {}
-            
-            # API에서 직접 제공하는 Total Equity 확보
-            info_data = raw_balance.get("info", {}).get("data", [{}])[0]
-            if isinstance(info_data, dict) and "totalEq" in info_data:
-                result["INFO"] = {
-                    "totalEq": float(info_data["totalEq"] or 0.0),
-                    "isoEq": float(info_data.get("isoEq", 0) or 0.0)
-                }
+
+            # Binance는 totalEq 대신 totalWalletBalance 등 사용
+            info_data = raw_balance.get("info", {})
+            if isinstance(info_data, dict):
+                total_wallet = info_data.get("totalWalletBalance")
+                if total_wallet is not None:
+                    result["INFO"] = {
+                        "totalEq": float(total_wallet or 0.0),
+                        "isoEq": float(info_data.get("totalCrossUnPnl", 0) or 0.0)
+                    }
 
             for currency, info in raw_balance.items():
                 if currency in ("info", "free", "used", "total", "timestamp", "datetime"):
@@ -274,3 +279,16 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"[DataFetcher] 잔고 조회 실패: {e}")
             return {}
+
+    # ── 티커 조회 ──
+
+    def get_ticker(self, pair: str) -> dict | None:
+        """24h 티커 정보 조회"""
+        symbol = normalize_symbol(pair)
+        try:
+            self._rate_limit()
+            ticker = self.exchange.fetch_ticker(symbol)
+            return ticker
+        except Exception as e:
+            logger.error(f"[DataFetcher] {pair} 티커 조회 실패: {e}")
+            return None

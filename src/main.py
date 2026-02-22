@@ -1,5 +1,5 @@
 """
-메인 컨트롤러 — 초기화, 메인 루프, 스케줄러, 셧다운 (OKX 선물+현물)
+메인 컨트롤러 — 초기화, 메인 루프, 스케줄러, 셧다운 (Binance 선물+현물)
 """
 
 from __future__ import annotations
@@ -24,18 +24,19 @@ from src.database.models import init_database
 from src.database.trade_logger import TradeLogger
 from src.notifications.discord_notifier import DiscordNotifier
 from src.utils.helpers import (
-    create_okx_exchange,
+    create_exchange,
+    normalize_symbol,
     format_usdt,
     load_config,
     now_kst,
     symbol_to_base,
 )
-from src.utils.constants import OKX_MIN_ORDER_USDT
+from src.utils.constants import MIN_ORDER_USDT
 
 
 class MainController:
     """
-    메인 컨트롤러 (OKX)
+    메인 컨트롤러 (Binance)
 
     - 초기화 시퀀스 (설정→API→디스코드→DB→리스크매니저)
     - asyncio 메인 루프 (10초 간격)
@@ -51,7 +52,7 @@ class MainController:
         self.config: Dict = {}
 
         # 모듈 인스턴스
-        self.exchange: Optional[ccxt.okx] = None
+        self.exchange: Optional[ccxt.Exchange] = None
         self.data_fetcher: Optional[DataFetcher] = None
         self.indicators: Optional[Indicators] = None
         self.signal_engine: Optional[SignalEngine] = None
@@ -77,7 +78,7 @@ class MainController:
         Returns:
             True = 성공, False = 실패
         """
-        logger.info("═══ OKX 선물+현물 자동매매 봇 초기화 ═══")
+        logger.info("═══ Binance 선물+현물 자동매매 봇 초기화 ═══")
 
         # 1. 설정 파일 로드
         try:
@@ -90,17 +91,20 @@ class MainController:
         trading = self.config.get("trading", {})
         mode = trading.get("mode", "paper")
 
-        # 2. OKX Exchange 생성
+        # 2. Binance Exchange 생성
+        market_type = trading.get("market_type", "swap")
         try:
-            self.exchange = create_okx_exchange(mode)
+            self.exchange = create_exchange(
+                "binance", mode, market_type=market_type
+            )
             if mode == "live":
-                logger.info("✅ OKX LIVE 연결 완료")
+                logger.info("✅ Binance LIVE 연결 완료")
             elif mode == "demo":
-                logger.info("✅ OKX DEMO 연결 완료 (샌드박스)")
+                logger.info("✅ Binance DEMO 연결 완료 (Testnet)")
             else:
-                logger.info("✅ OKX Public API 연결 (Paper 모드)")
+                logger.info("✅ Binance Public API 연결 (Paper 모드)")
         except Exception as e:
-            logger.critical(f"OKX 연결 실패: {e}")
+            logger.critical(f"Binance 연결 실패: {e}")
             return False
 
         # 3. 데이터베이스 초기화
@@ -149,7 +153,7 @@ class MainController:
             self.notifier = DiscordNotifier(self.config)
             asyncio.create_task(self.notifier.notify_system(
                 "봇 시작",
-                f"거래소: OKX\n"
+                f"거래소: Binance\n"
                 f"매매 모드: {mode}\n"
                 f"마켓: {trading.get('market_type', 'swap')}\n"
                 f"레버리지: {trading.get('leverage', 1)}x\n"
@@ -420,7 +424,7 @@ class MainController:
                 f"{format_usdt(amount_usdt)} -> {format_usdt(available_usdt * 0.99)} (가용잔고 부족)"
             )
             amount_usdt = available_usdt * 0.99
-            if amount_usdt < OKX_MIN_ORDER_USDT:
+            if amount_usdt < MIN_ORDER_USDT:
                 return
 
         # 주문 실행
@@ -778,7 +782,7 @@ class MainController:
         # 시장 환경 데이터 (BTC 기준)
         btc_info = {"chg_24h": 0.0, "volume_ratio": 1.0}
         try:
-            ticker = self.data_fetcher.get_ticker("BTC/USDT:USDT")
+            ticker = self.data_fetcher.get_ticker("BTC/USDT")
             if ticker:
                 btc_info["chg_24h"] = ticker.get("percentage", 0.0)
         except: pass

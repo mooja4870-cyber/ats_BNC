@@ -1,4 +1,4 @@
-"""거래 기록 로거 (DB 저장 헬퍼) — OKX"""
+"""거래 기록 로거 (DB 저장 헬퍼) — Binance"""
 
 from __future__ import annotations
 

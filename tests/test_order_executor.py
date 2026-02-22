@@ -1,9 +1,9 @@
-"""OKX OrderExecutor 테스트 (Paper 모드)"""
+"""Binance OrderExecutor 테스트 (Paper 모드)"""
 
 import pytest
 from unittest.mock import patch, MagicMock
 from src.core.order_executor import OrderExecutor
-from src.utils.constants import OKX_MIN_ORDER_USDT
+from src.utils.constants import MIN_ORDER_USDT
 
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def paper_config():
             "market_type": "swap",
             "leverage": 1,
             "margin_mode": "isolated",
-            "pairs": ["BTC/USDT:USDT"],
+            "pairs": ["BTC/USDT"],
         },
         "risk": {
             "fee_rate": 0.0005,
@@ -29,10 +29,10 @@ def paper_config():
 @pytest.fixture
 def executor(paper_config):
     """Paper 모드 OrderExecutor"""
-    with patch("ccxt.okx") as mock_okx:
+    with patch("ccxt.binanceusdm") as mock_binance:
         mock_exchange = MagicMock()
         mock_exchange.fetch_ticker.return_value = {"last": 100000.0}
-        mock_okx.return_value = mock_exchange
+        mock_binance.return_value = mock_exchange
 
         exe = OrderExecutor(paper_config)
         exe.exchange = mock_exchange
@@ -46,7 +46,7 @@ class TestPaperLong:
 
     def test_open_long_basic(self, executor):
         """기본 롱 진입"""
-        result = executor.open_long("BTC/USDT:USDT", 100.0)
+        result = executor.open_long("BTC/USDT", 100.0)
         assert result is not None
         assert result["side"] == "buy"
         assert result["position_side"] == "long"
@@ -57,19 +57,19 @@ class TestPaperLong:
     def test_open_long_deducts_balance(self, executor):
         """롱 진입 시 잔고 차감 (수수료만)"""
         initial = executor._paper_balance_usdt
-        executor.open_long("BTC/USDT:USDT", 100.0)
+        executor.open_long("BTC/USDT", 100.0)
         expected_fee = 100.0 * executor.fee_rate
         assert executor._paper_balance_usdt == initial - expected_fee
 
     def test_open_long_minimum_order(self, executor):
         """최소 주문금액 미달 시 None 반환"""
-        result = executor.open_long("BTC/USDT:USDT", OKX_MIN_ORDER_USDT - 1)
+        result = executor.open_long("BTC/USDT", MIN_ORDER_USDT - 1)
         assert result is None
 
     def test_open_long_insufficient_balance(self, executor):
         """잔고 부족 시 None 반환"""
         executor._paper_balance_usdt = 1.0
-        result = executor.open_long("BTC/USDT:USDT", 100.0)
+        result = executor.open_long("BTC/USDT", 100.0)
         assert result is None
 
 
@@ -78,21 +78,22 @@ class TestPaperShort:
 
     def test_open_short_basic(self, executor):
         """기본 숏 진입"""
-        result = executor.open_short("BTC/USDT:USDT", 100.0)
+        result = executor.open_short("BTC/USDT", 100.0)
         assert result is not None
         assert result["side"] == "sell"
         assert result["position_side"] == "short"
         assert result["mode"] == "paper"
 
     def test_open_short_spot_rejected(self, executor):
-        """현물 페어로 숏 시도 시 None"""
+        """현물 모드에서 숏 시도 시 None (market_type으로 판별)"""
+        executor.market_type = "spot"
         result = executor.open_short("BTC/USDT", 100.0)
         assert result is None
 
     def test_open_short_deducts_margin(self, executor):
         """숏 진입 시 잔고 차감 (수수료만)"""
         initial = executor._paper_balance_usdt
-        executor.open_short("BTC/USDT:USDT", 100.0)
+        executor.open_short("BTC/USDT", 100.0)
         expected_fee = 100.0 * executor.fee_rate
         assert executor._paper_balance_usdt == initial - expected_fee
 
@@ -102,11 +103,11 @@ class TestPaperClose:
 
     def test_close_long_returns_funds(self, executor):
         """롱 청산 시 잔고 감소 (수수료 차감)"""
-        executor.open_long("BTC/USDT:USDT", 100.0)
+        executor.open_long("BTC/USDT", 100.0)
         balance_after_buy = executor._paper_balance_usdt
 
         result = executor.close_position(
-            "BTC/USDT:USDT", 0.0009995, "long"
+            "BTC/USDT", 0.0009995, "long"
         )
         assert result is not None
         # 실현손익은 별도로 반영되므로, OrderExecutor 내부에서는 청산 수수료만 차감됨
@@ -114,9 +115,9 @@ class TestPaperClose:
 
     def test_close_short(self, executor):
         """숏 청산"""
-        executor.open_short("BTC/USDT:USDT", 100.0)
+        executor.open_short("BTC/USDT", 100.0)
         result = executor.close_position(
-            "BTC/USDT:USDT", 0.0009995, "short"
+            "BTC/USDT", 0.0009995, "short"
         )
         assert result is not None
         assert result["position_side"] == "short"
@@ -153,7 +154,7 @@ class TestBalanceSyncWithRiskManager:
         assert rm.current_balance == 10000.0
 
         # 매수 실행
-        result = executor.open_long("BTC/USDT:USDT", 1000.0)
+        result = executor.open_long("BTC/USDT", 1000.0)
         assert result is not None
 
         # OrderExecutor 현금은 수수료만큼만 줄어야 함
@@ -175,17 +176,18 @@ class TestBalanceSyncWithRiskManager:
 
         # 매수 실행
         buy_amount = 1000.0
-        result = executor.open_long("BTC/USDT:USDT", buy_amount)
+        result = executor.open_long("BTC/USDT", buy_amount)
         assert result is not None
 
         # 포지션 등록
         pt.open_position(
-            pair="BTC/USDT:USDT",
+            pair="BTC/USDT",
             entry_price=result["price"],
             quantity=result["quantity"],
             stop_loss=95000.0,
             take_profit=110000.0,
             trade_id=result["trade_id"],
+            initial_margin=result.get("initial_margin", buy_amount),
             position_side="long",
         )
 
@@ -195,7 +197,7 @@ class TestBalanceSyncWithRiskManager:
 
         # 총자산 계산: 현금 + 미실현손익
         current_price = 100000.0  # mock 가격
-        position = pt.get_position("BTC/USDT:USDT")
+        position = pt.get_position("BTC/USDT")
         
         # 진입가격과 현재가격이 같으므로 미실현손익은 0
         unrealized_pnl = 0.0
@@ -211,7 +213,7 @@ class TestBalanceSyncWithRiskManager:
         assert total_assets <= 10000.0
 
         # 정리
-        pt.close_position("BTC/USDT:USDT")
+        pt.close_position("BTC/USDT")
 
     def test_risk_manager_update_balance(self, paper_config, executor):
         """RiskManager.update_balance() 메서드 동작 검증"""

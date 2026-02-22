@@ -306,7 +306,7 @@ class SignalEngine:
         # 1-1. 고정 손절 (1.0%)
         sl_fixed_pct = 0.010
         if pnl_pct <= -sl_fixed_pct:
-            return Signal(pair=pair, signal_type="exit", reason="SL", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
+            return Signal(pair=pair, signal_type="exit", score=0.0, reason="SL", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
 
         # 1-2. 동적 손절 (10캔들 기반, 최대 2.0% 캡)
         # 캡 가격 계산
@@ -316,27 +316,27 @@ class SignalEngine:
             # "캡"이라는 것은 손절선이 이 가격보다 더 아래로 내려가지 않음을 의미 (즉, max 로직)
             dynamic_sl = max(recent_low, sl_cap_price)
             if close < dynamic_sl:
-                return Signal(pair=pair, signal_type="exit", reason="SL", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
+                return Signal(pair=pair, signal_type="exit", score=0.0, reason="SL", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
         else:
             sl_cap_price = entry_price * 1.02
             recent_high = df_main["high"].iloc[-10:].max()
             dynamic_sl = min(recent_high, sl_cap_price)
             if close > dynamic_sl:
-                return Signal(pair=pair, signal_type="exit", reason="SL", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
+                return Signal(pair=pair, signal_type="exit", score=0.0, reason="SL", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
 
         # 2. 익절(TP) 로직 (다단계)
         # TP1: +0.8% (30%), TP2: +1.5% (30%), TP3: +2.5% (전량)
         if tp_stage < 1 and pnl_pct >= 0.008:
-            return Signal(pair=pair, signal_type="exit", reason="TP1", price=close, quantity_pct=0.3, timestamp=now_kst().isoformat(), position_side=position_side)
+            return Signal(pair=pair, signal_type="exit", score=0.0, reason="TP1", price=close, quantity_pct=0.3, timestamp=now_kst().isoformat(), position_side=position_side)
         
         if tp_stage < 2 and pnl_pct >= 0.015:
             # TP1을 건너뛰고 바로 TP2로 올 수도 있으므로, 남은 수량의 적절한 비율을 계산해야 함.
             # 하지만 여기서는 단순화를 위해 "현재 수량의 30%를 추가로 턴다"는 개념으로 0.3 반환.
             # (MainController에서 처리 방식에 따라 다름)
-            return Signal(pair=pair, signal_type="exit", reason="TP2", price=close, quantity_pct=0.3, timestamp=now_kst().isoformat(), position_side=position_side)
+            return Signal(pair=pair, signal_type="exit", score=0.0, reason="TP2", price=close, quantity_pct=0.3, timestamp=now_kst().isoformat(), position_side=position_side)
             
         if pnl_pct >= 0.025:
-            return Signal(pair=pair, signal_type="exit", reason="TP3", price=close, quantity_pct=1.0, timestamp=now_kst().isoformat(), position_side=position_side)
+            return Signal(pair=pair, signal_type="exit", score=0.0, reason="TP3", price=close, quantity_pct=1.0, timestamp=now_kst().isoformat(), position_side=position_side)
 
         # 3. 트레일링 스톱 (TP1 이후 활성화, 고점 대비 0.4% 되돌림)
         if tp_stage >= 1:
@@ -346,15 +346,15 @@ class SignalEngine:
                 pullback = (close - peak_price) / peak_price
                 
             if pullback >= 0.004:
-                return Signal(pair=pair, signal_type="exit", reason="Trailing", price=close, quantity_pct=1.0, timestamp=now_kst().isoformat(), position_side=position_side)
+                return Signal(pair=pair, signal_type="exit", score=0.0, reason="Trailing", price=close, quantity_pct=1.0, timestamp=now_kst().isoformat(), position_side=position_side)
 
         # 4. EMA 크로스 청산 (미실현 손실 중일 때만)
         if pnl_pct < 0:
             ema_cross = latest.get("ema_cross", 0)
             if position_side == "long" and ema_cross == -1:
-                return Signal(pair=pair, signal_type="exit", reason="EMA", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
+                return Signal(pair=pair, signal_type="exit", score=0.0, reason="EMA", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
             elif position_side == "short" and ema_cross == 1:
-                return Signal(pair=pair, signal_type="exit", reason="EMA", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
+                return Signal(pair=pair, signal_type="exit", score=0.0, reason="EMA", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
 
         # 5. 시간 청산 (60분)
         from datetime import datetime
@@ -368,7 +368,7 @@ class SignalEngine:
                 # 여기서는 별도 시그널 대신 관망을 리턴하여 루프에서 peak_price 업데이트를 계속하도록 함.
                 pass
             else:
-                return Signal(pair=pair, signal_type="exit", reason="Time", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
+                return Signal(pair=pair, signal_type="exit", score=0.0, reason="Time", price=close, timestamp=now_kst().isoformat(), position_side=position_side)
 
         return Signal(
             pair=pair,

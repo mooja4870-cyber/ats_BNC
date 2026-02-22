@@ -6,6 +6,7 @@ trading:
     - "ETH/USDT:USDT"
     - "XRP/USDT:USDT"
     - "SOL/USDT:USDT"
+    - "DOGE/USDT:USDT"
   timeframe_main: "5m"
   timeframe_entry: "1m"
   timeframe_trend: "1h"
@@ -42,13 +43,14 @@ risk:
     "ETH/USDT:USDT": 0.010
     "XRP/USDT:USDT": 0.012
     "SOL/USDT:USDT": 0.012
+    "DOGE/USDT:USDT": 0.012
   max_consecutive_losses: 5
   # 포지션 사이징 개선
-  margin_per_ticker_pct: 0.03    # 기본 진입 마진 (총자산의 3%)
-  max_total_margin_pct: 0.20     # 총 마진 사용 한도 (총자산의 20%)
+  margin_per_ticker_pct: 0.09    # 기본 진입 마진 (총자산의 9%)
+  max_total_margin_pct: 0.45     # 총 마진 사용 한도 (총자산의 45%)
   min_available_balance_pct: 0.5 # 신규 진입을 위한 최소 가용잔고 (총자산의 50%)
-  target_atr_pct: 0.003          # 기준 ATR% (0.3%)
-  max_per_ticker_pct: 0.04       # 티커당 최대 마진 캡 (4%)
+  target_atr_pct: 0.009          # 기준 ATR% (0.9%)
+  max_per_ticker_pct: 0.15       # 티커당 최대 마진 캡 (15%)
   
   fee_rate: 0.0005              # taker 0.05%
   fee_rate_maker: 0.0002        # maker 0.02%

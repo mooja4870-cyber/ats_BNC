@@ -1,6 +1,6 @@
-# 🤖 ATS_OKX — OKX 선물/현물 자동매매 봇
+# 🤖 ATS_BNC — Binance 선물/현물 자동매매 봇
 
-OKX 거래소 기반의 암호화폐 자동매매 시스템입니다.  
+Binance 거래소 기반의 암호화폐 자동매매 시스템입니다.  
 기술적 지표(EMA, RSI, 볼린저밴드, VWAP, 거래량)를 활용한 다중 조건 스코어링 전략으로 매매합니다.
 
 ---
@@ -8,7 +8,7 @@ OKX 거래소 기반의 암호화폐 자동매매 시스템입니다.
 ## 📁 프로젝트 구조
 
 ```
-ATS_OKX/
+ATS_BNC/
 ├── config/                  # 설정 파일
 │   ├── settings.yaml        # 메인 설정 (모드, 페어, 지표, 리스크 등)
 │   ├── pairs.yaml           # 거래 페어 상세 설정
@@ -41,7 +41,7 @@ ATS_OKX/
 ├── tests/                   # 테스트
 ├── data/                    # 데이터 (로그, 상태 파일)
 ├── docs/                    # 문서
-│   ├── API_SETUP.md         # OKX API 설정 가이드
+│   ├── API_SETUP.md         # Binance API 설정 가이드
 │   ├── DISCORD_SETUP.md     # 디스코드 알림 설정
 │   └── STRATEGY.md          # 매매 전략 상세
 ├── .env                     # 환경변수 (API 키 등, git 미포함)
@@ -61,7 +61,7 @@ pip install -r requirements.txt
 
 # 환경변수 설정
 cp .env.example .env
-# .env 파일에 OKX API 키, Discord Webhook URL 입력
+# .env 파일에 Binance API 키, Discord Webhook URL 입력
 ```
 
 ### 2. 설정 확인
@@ -125,10 +125,10 @@ python scripts/live_trade.py
 
 | 페어 | 마켓 | 레버리지 |
 |------|------|----------|
-| BTC/USDT:USDT | 선물 (Swap) | 10x |
-| ETH/USDT:USDT | 선물 (Swap) | 10x |
-| XRP/USDT:USDT | 선물 (Swap) | 10x |
-| SOL/USDT:USDT | 선물 (Swap) | 10x |
+| BTC/USDT | 선물 (USDT-M) | 10x |
+| ETH/USDT | 선물 (USDT-M) | 10x |
+| XRP/USDT | 선물 (USDT-M) | 10x |
+| SOL/USDT | 선물 (USDT-M) | 10x |
 
 ---
 

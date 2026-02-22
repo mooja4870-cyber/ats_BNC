@@ -1,4 +1,4 @@
-"""상수 정의 (OKX)"""
+"""상수 정의 (Binance)"""
 
 from enum import Enum
 
@@ -33,10 +33,15 @@ class SignalType(Enum):
     EXIT = "exit"
     HOLD = "hold"
 
-# OKX API 제한
-OKX_API_RATE_LIMIT = 20          # 초당 최대 요청
-OKX_API_DELAY = 0.06             # 요청 간 최소 딜레이(초)
-OKX_MIN_ORDER_USDT = 5           # 최소 주문 금액 (USDT)
+# API 제한 (Binance)
+API_RATE_LIMIT = 20              # 초당 최대 요청 (가중치 기반이므로 보수적)
+API_DELAY = 0.05                 # 요청 간 최소 딜레이(초)
+MIN_ORDER_USDT = 5               # 최소 주문 금액 (USDT) — Binance minNotional ~5 USDT
+
+# 레거시 호환 별칭 (기존 import 깨지지 않도록)
+OKX_API_RATE_LIMIT = API_RATE_LIMIT
+OKX_API_DELAY = API_DELAY
+OKX_MIN_ORDER_USDT = MIN_ORDER_USDT
 
 # 캔들 데이터 설정
 MIN_CANDLES_FOR_INDICATORS = 50  # 지표 계산 최소 캔들 수
